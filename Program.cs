@@ -1,35 +1,36 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Linq;
+using System.Threading;
 
 class Program
 {
     static void Main()
     {
-        Console.OutputEncoding = Encoding.UTF8; // Permitir caracteres especiales
-        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); // Agregar compatibilidad con más codificaciones
+        Console.WriteLine("Programa iniciado...");
+        Console.OutputEncoding = Encoding.UTF8;
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-        Console.Clear();
-        Console.WriteLine("*******************************");
-        Console.WriteLine("   Bienvenido al Convertidor   ");
-        Console.WriteLine("*******************************");
-        Console.WriteLine("Procesando archivos...\n");
-
-        string rutaOrigen = Directory.GetCurrentDirectory(); // Obtener ruta actual donde se ejecuta el .exe
+        string rutaOrigen = AppDomain.CurrentDomain.BaseDirectory;
+        Console.WriteLine($"Ruta de origen: {rutaOrigen}");
 
         if (!Directory.Exists(rutaOrigen))
         {
             Console.WriteLine("Error: La ruta de archivos no existe.");
-            Console.ReadKey();
+            Console.ReadKey(); // Mantener la ventana abierta en caso de error
             return;
         }
 
-        string[] archivos = Directory.GetFiles(rutaOrigen, "*.jrn");
+        string[] archivos = Directory.GetFiles(rutaOrigen, "*.jrn")
+                                     .Where(f => Path.GetFileName(f).ToLower().Contains("control") && !Path.GetFileName(f).ToLower().Contains("error"))
+                                     .ToArray();
 
         if (archivos.Length == 0)
         {
             Console.WriteLine("Error: No hay archivos para procesar.");
-            Console.ReadKey();
+            Console.ReadKey(); // Mantener la ventana abierta en caso de error
             return;
         }
 
@@ -39,29 +40,42 @@ class Program
         {
             try
             {
-                string contenido = File.ReadAllText(archivo, Encoding.Latin1); // Usar codificación Latin1 para asegurar caracteres especiales
-                string[] lineas = contenido.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None); // Separar líneas por saltos de línea
+                string contenido = File.ReadAllText(archivo, Encoding.Latin1);
+                string[] lineas = contenido.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
                 int lineasACopiar = Math.Min(10, lineas.Length);
 
                 string nombreArchivo = Path.GetFileName(archivo);
-                string nombreDestino = nombreArchivo.Replace("CONTROL", "MUESTRA");
-                if (nombreDestino == nombreArchivo)
+                string nombreBase = nombreArchivo.Replace("CONTROL", "MUESTRA");
+
+                // Quitar "FAC" del nombre si está presente
+                nombreBase = Regex.Replace(nombreBase, "_FAC_", "_", RegexOptions.IgnoreCase);
+
+                string rutaDestino = Path.Combine(rutaOrigen, nombreBase);
+                int contador = 1;
+
+                // Si el archivo ya existe, agregar un número correlativo
+                while (File.Exists(rutaDestino))
                 {
-                    nombreDestino = "MUESTRA_" + nombreArchivo;
+                    string nombreSinExtension = Path.GetFileNameWithoutExtension(nombreBase);
+                    string extension = Path.GetExtension(nombreBase);
+                    rutaDestino = Path.Combine(rutaOrigen, $"{nombreSinExtension}_{contador}{extension}");
+                    contador++;
                 }
-
-                string rutaDestino = Path.Combine(rutaOrigen, nombreDestino);
-
-                using (StreamWriter sw = new StreamWriter(rutaDestino, false, Encoding.Latin1)) // Usar la misma codificación para escritura
+                
+                using (StreamWriter sw = new StreamWriter(rutaDestino, false, Encoding.Latin1))
                 {
                     for (int i = 0; i < lineasACopiar; i++)
                     {
                         sw.WriteLine(lineas[i]);
                     }
-                    sw.WriteLine(); // Línea vacía para separar el contenido
+
+                    if (lineas.Length > 0 && !string.IsNullOrWhiteSpace(lineas[^1]))
+                    {
+                        sw.WriteLine(); // Agregar una línea vacía solo si la última línea no es vacía
+                    }
                 }
 
-                Console.WriteLine($"Archivo generado correctamente: {nombreDestino}");
+                Console.WriteLine($"Archivo generado correctamente: {rutaDestino}");
             }
             catch (Exception ex)
             {
@@ -72,13 +86,13 @@ class Program
 
         if (huboError)
         {
-            Console.WriteLine("\nProceso finalizado con errores.");
+            Console.WriteLine("Proceso finalizado con errores. Presiona una tecla para salir.");
             Console.ReadKey();
         }
         else
         {
-            Console.WriteLine("\nProceso finalizado correctamente.");
-            System.Threading.Thread.Sleep(3000); // Esperar 3 segundos antes de cerrar
+            Console.WriteLine("Proceso finalizado correctamente.");
+            Thread.Sleep(3000);
         }
     }
 }
